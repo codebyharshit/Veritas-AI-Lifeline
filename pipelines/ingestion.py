@@ -48,16 +48,24 @@ COLUMN_MAPPINGS = {
     "facilityname": "facility_name",
     "facility name": "facility_name",
     "name": "facility_name",
-    # state
+    # state - including address_ prefix from actual dataset
     "state": "state",
-    # district
+    "address_stateorregion": "state",
+    "stateorregion": "state",
+    # district - using city as proxy
     "district": "district",
+    "address_city": "district",
+    "city": "district",
     # pin_code variations
     "pin_code": "pin_code",
     "pincode": "pin_code",
     "pin code": "pin_code",
     "pin": "pin_code",
     "postal_code": "pin_code",
+    "address_ziporpostcode": "pin_code",
+    "ziporpostcode": "pin_code",
+    "zipcode": "pin_code",
+    "postcode": "pin_code",
     # latitude
     "latitude": "latitude",
     "lat": "latitude",
@@ -70,13 +78,15 @@ COLUMN_MAPPINGS = {
     "facilitytype": "facility_type",
     "facility type": "facility_type",
     "type": "facility_type",
+    "facilitytypeid": "facility_type",
     # bed_count variations
     "bed_count": "bed_count",
     "bedcount": "bed_count",
     "bed count": "bed_count",
     "beds": "bed_count",
     "number_of_beds": "bed_count",
-    # unstructured_notes variations
+    "capacity": "bed_count",
+    # unstructured_notes - will be combined from multiple fields
     "unstructured_notes": "unstructured_notes",
     "notes": "unstructured_notes",
     "description": "unstructured_notes",
@@ -85,8 +95,27 @@ COLUMN_MAPPINGS = {
     "details": "unstructured_notes",
 }
 
-# Required fields that cannot be null
-REQUIRED_FIELDS = ["facility_name", "state", "district", "pin_code", "facility_type", "unstructured_notes"]
+# Additional columns to combine into unstructured_notes
+NOTES_COMBINE_COLUMNS = [
+    "description",
+    "specialties",
+    "procedure",
+    "equipment",
+    "capability",
+    "numberdoctors",
+]
+
+# Required fields that cannot be null - reduced to essentials for this dataset
+# Many Indian facility datasets have incomplete address info
+REQUIRED_FIELDS = ["facility_name", "unstructured_notes"]
+
+# Fields we'll fill with defaults if missing
+DEFAULT_VALUES = {
+    "state": "Unknown",
+    "district": "Unknown",
+    "pin_code": "000000",
+    "facility_type": "Unknown",
+}
 
 
 def normalize_column_name(col_name: str) -> Optional[str]:
@@ -131,10 +160,35 @@ def run_ingestion(
     # Show original columns for debugging
     print(f"[Stage 1] Original columns: {list(pdf.columns)}")
 
+    # First, combine multiple columns into unstructured_notes
+    notes_parts = []
+    original_columns_lower = {col.lower(): col for col in pdf.columns}
+
+    for notes_col in NOTES_COMBINE_COLUMNS:
+        if notes_col in original_columns_lower:
+            actual_col = original_columns_lower[notes_col]
+            notes_parts.append(actual_col)
+
+    if notes_parts:
+        print(f"[Stage 1] Combining columns into unstructured_notes: {notes_parts}")
+
+        def combine_notes(row):
+            parts = []
+            for col in notes_parts:
+                val = row.get(col)
+                if pd.notna(val) and str(val).strip():
+                    col_label = col.replace("_", " ").title()
+                    parts.append(f"{col_label}: {val}")
+            return "\n\n".join(parts) if parts else ""
+
+        pdf["_combined_notes"] = pdf.apply(combine_notes, axis=1)
+
     # Normalize column names
     column_map = {}
     unmapped_columns = []
     for col in pdf.columns:
+        if col == "_combined_notes":
+            continue  # Skip our temp column
         mapped = normalize_column_name(col)
         if mapped:
             column_map[col] = mapped
@@ -148,6 +202,11 @@ def run_ingestion(
 
     # Rename columns
     pdf = pdf.rename(columns=column_map)
+
+    # Use combined notes if we created them, otherwise use mapped unstructured_notes
+    if "_combined_notes" in pdf.columns:
+        pdf["unstructured_notes"] = pdf["_combined_notes"]
+        pdf = pdf.drop(columns=["_combined_notes"])
 
     # Keep only mapped columns that exist in our schema
     schema_fields = [f.name for f in FACILITIES_RAW_SCHEMA.fields if f.name != "ingested_at"]
@@ -179,6 +238,17 @@ def run_ingestion(
     # Convert lat/long to float
     pdf["latitude"] = pd.to_numeric(pdf["latitude"], errors="coerce")
     pdf["longitude"] = pd.to_numeric(pdf["longitude"], errors="coerce")
+
+    # Fill default values for missing optional fields
+    for field, default_val in DEFAULT_VALUES.items():
+        if field in pdf.columns:
+            pdf[field] = pdf[field].fillna(default_val)
+            pdf[field] = pdf[field].replace("", default_val)
+            pdf[field] = pdf[field].replace("None", default_val)
+
+    # Convert facility_type to string (might be numeric ID)
+    if "facility_type" in pdf.columns:
+        pdf["facility_type"] = pdf["facility_type"].astype(str)
 
     # Add ingestion timestamp
     pdf["ingested_at"] = datetime.utcnow()
