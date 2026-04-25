@@ -139,23 +139,31 @@ citations_df.show(5, truncate=50)
 # COMMAND ----------
 
 # Show detailed extraction for one facility
+import json
+
 df = spark.table(TARGET_TABLE)
 sample = df.limit(1).collect()[0]
 
+# Parse JSON strings
+capabilities = json.loads(sample.verified_capabilities_json) if sample.verified_capabilities_json else []
+staff = json.loads(sample.staff_json) if sample.staff_json else []
+equipment = json.loads(sample.equipment_json) if sample.equipment_json else []
+
 print(f"Facility ID: {sample.facility_id}")
-print(f"\nVerified Capabilities ({len(sample.verified_capabilities)}):")
-for cap in sample.verified_capabilities:
+print(f"\nVerified Capabilities ({len(capabilities)}):")
+for cap in capabilities:
     print(f"  - {cap['capability']}")
     print(f"    Confidence: {cap['confidence']}")
-    print(f"    Evidence: \"{cap['evidence_sentence'][:80]}...\"")
+    evidence = cap.get('evidence_sentence', '')[:80]
+    print(f"    Evidence: \"{evidence}...\"")
 
-print(f"\nStaff ({len(sample.staff)}):")
-for s in sample.staff:
+print(f"\nStaff ({len(staff)}):")
+for s in staff:
     print(f"  - {s['role']} ({s.get('specialty', 'N/A')})")
 
-print(f"\nEquipment ({len(sample.equipment)}):")
-for eq in sample.equipment:
-    status = "functional" if eq['functional'] else "non-functional"
+print(f"\nEquipment ({len(equipment)}):")
+for eq in equipment:
+    status = "functional" if eq.get('functional', True) else "non-functional"
     print(f"  - {eq['item']} ({status})")
 
 print(f"\nOperational Hours: {sample.operational_hours}")

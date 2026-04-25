@@ -241,13 +241,17 @@ def run_extraction(
                 fid, extraction, citations, error = future.result()
 
                 if extraction:
+                    # Serialize complex arrays as JSON strings to avoid Delta NullType issues
                     results.append({
                         "facility_id": fid,
-                        "verified_capabilities": [c.model_dump() for c in extraction.verified_capabilities],
-                        "staff": [s.model_dump() for s in extraction.staff],
-                        "equipment": [e.model_dump() for e in extraction.equipment],
-                        "operational_hours": extraction.operational_hours,
-                        "last_update_mentioned": extraction.last_update_mentioned,
+                        "verified_capabilities_json": json.dumps([c.model_dump() for c in extraction.verified_capabilities]),
+                        "staff_json": json.dumps([s.model_dump() for s in extraction.staff]),
+                        "equipment_json": json.dumps([e.model_dump() for e in extraction.equipment]),
+                        "capabilities_count": len(extraction.verified_capabilities),
+                        "staff_count": len(extraction.staff),
+                        "equipment_count": len(extraction.equipment),
+                        "operational_hours": extraction.operational_hours or "",
+                        "last_update_mentioned": extraction.last_update_mentioned or "",
                         "extraction_model": MODEL_CHAT,
                         "extracted_at": datetime.utcnow(),
                     })
@@ -319,10 +323,16 @@ def preview_extractions(
     for row in rows:
         print(f"\n{'='*60}")
         print(f"Facility: {row.facility_id}")
-        print(f"Capabilities: {len(row.verified_capabilities)}")
-        for cap in row.verified_capabilities[:3]:
+
+        # Parse JSON strings back to lists
+        capabilities = json.loads(row.verified_capabilities_json) if row.verified_capabilities_json else []
+        staff = json.loads(row.staff_json) if row.staff_json else []
+        equipment = json.loads(row.equipment_json) if row.equipment_json else []
+
+        print(f"Capabilities: {len(capabilities)}")
+        for cap in capabilities[:3]:
             print(f"  - {cap['capability']} (conf: {cap['confidence']})")
-        if len(row.verified_capabilities) > 3:
-            print(f"  ... and {len(row.verified_capabilities) - 3} more")
-        print(f"Staff: {len(row.staff)}")
-        print(f"Equipment: {len(row.equipment)}")
+        if len(capabilities) > 3:
+            print(f"  ... and {len(capabilities) - 3} more")
+        print(f"Staff: {len(staff)}")
+        print(f"Equipment: {len(equipment)}")
