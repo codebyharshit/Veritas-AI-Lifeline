@@ -60,20 +60,47 @@ def build_profile_text(row) -> str:
     return "\n".join(parts)
 
 
-def create_embeddings_batch(client, texts: list[str], batch_size: int = 20) -> list[list[float]]:
-    """Create embeddings for a batch of texts."""
+def create_embeddings_batch(client, texts: list[str], batch_size: int = 5) -> list[list[float]]:
+    """Create embeddings for a batch of texts with rate limiting."""
+    import time
+
     all_embeddings = []
+    total_batches = (len(texts) + batch_size - 1) // batch_size
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
+        batch_num = i // batch_size + 1
 
-        response = client.embeddings.create(
-            model=MODEL_EMBEDDING,
-            input=batch,
-        )
+        # Retry logic for rate limits
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    delay = 2 ** (attempt + 1)  # Exponential backoff: 4, 8 seconds
+                    print(f"[Stage 5] Retry {attempt + 1}, waiting {delay}s...")
+                    time.sleep(delay)
 
-        batch_embeddings = [e.embedding for e in response.data]
-        all_embeddings.extend(batch_embeddings)
+                response = client.embeddings.create(
+                    model=MODEL_EMBEDDING,
+                    input=batch,
+                )
+
+                batch_embeddings = [e.embedding for e in response.data]
+                all_embeddings.extend(batch_embeddings)
+
+                # Progress update every 50 batches
+                if batch_num % 50 == 0 or batch_num == total_batches:
+                    print(f"[Stage 5] Progress: {batch_num}/{total_batches} batches ({len(all_embeddings)} embeddings)")
+
+                # Delay between successful calls to avoid rate limits
+                time.sleep(0.5)
+                break
+
+            except Exception as e:
+                if "429" in str(e) and attempt < max_retries - 1:
+                    continue  # Retry on rate limit
+                else:
+                    raise e  # Re-raise if not rate limit or max retries exceeded
 
     return all_embeddings
 
