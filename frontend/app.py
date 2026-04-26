@@ -173,9 +173,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Import tab components
-from frontend.tabs.map_tab import render_map_tab
-from frontend.tabs.inspector_tab import render_inspector_tab
-from frontend.tabs.query_tab import render_query_tab
+from tabs.map_tab import render_map_tab
+from tabs.inspector_tab import render_inspector_tab
+from tabs.query_tab import render_query_tab
 
 # Header with better spacing
 col1, col2 = st.columns([3, 1])
