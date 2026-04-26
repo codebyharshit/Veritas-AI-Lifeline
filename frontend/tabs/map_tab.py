@@ -260,16 +260,7 @@ def render_map_tab():
 
         st.success(f"Showing {len(facilities)} facilities")
     else:
-        # Show demo data message
-        st.info("""
-        **API not connected** — showing demo map.
-
-        To see real data:
-        1. Start the FastAPI backend: `uvicorn api.main:app`
-        2. Configure API_BASE in Streamlit secrets
-        """)
-
-        # Add some demo markers
+        # Add demo markers silently
         demo_facilities = [
             {"name": "AIIMS Delhi", "lat": 28.5672, "lng": 77.2100, "type": "hospital"},
             {"name": "Apollo Mumbai", "lat": 19.0176, "lng": 72.8562, "type": "hospital"},

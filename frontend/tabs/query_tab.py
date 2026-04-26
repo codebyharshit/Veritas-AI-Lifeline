@@ -143,8 +143,6 @@ def render_query_response(response: dict):
 
                     [🔗 View Full MLflow Trace](/mlflow/#/experiments/0/runs/{trace_id})
                     """)
-                else:
-                    st.markdown("*Reasoning trace available when connected to API*")
 
             st.markdown("---")
 

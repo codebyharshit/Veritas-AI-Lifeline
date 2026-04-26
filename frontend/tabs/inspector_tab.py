@@ -115,7 +115,6 @@ def render_inspector_tab():
 
     if not facilities and not search_query:
         # Show demo
-        st.info("**Demo Mode** — Enter a search term or connect the API to see real facilities.")
         selected_facility = demo_facility
         debate = demo_debate
     elif facilities:
