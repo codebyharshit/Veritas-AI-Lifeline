@@ -29,19 +29,12 @@ def get_trust_debate(facility_id: str) -> Optional[dict]:
     return None
 
 
-def search_facilities(query: str) -> list:
-    """Search facilities by name."""
+def get_all_facilities() -> list:
+    """Fetch all facilities from API."""
     try:
-        response = requests.get(f"{API_BASE}/api/facilities", params={"limit": 20})
+        response = requests.get(f"{API_BASE}/api/facilities", params={"limit": 100})
         if response.status_code == 200:
-            facilities = response.json().get("facilities", [])
-            # Filter by query
-            if query:
-                facilities = [
-                    f for f in facilities
-                    if query.lower() in f.get("facility_name", "").lower()
-                ]
-            return facilities
+            return response.json().get("facilities", [])
     except:
         pass
     return []
@@ -61,11 +54,26 @@ def render_inspector_tab():
     </div>
     """, unsafe_allow_html=True)
 
-    # Search box
-    search_query = st.text_input(
-        "🔍 Search facility by name",
-        placeholder="e.g., Apollo Hospital, AIIMS Delhi...",
-    )
+    # Fetch all facilities
+    all_facilities = get_all_facilities()
+
+    # Demo facilities for when API is not connected
+    demo_facilities = [
+        {"facility_id": "f001", "facility_name": "Apollo Hospital Delhi", "state": "Delhi", "district": "New Delhi", "facility_type": "Hospital", "trust_score": 85},
+        {"facility_id": "f002", "facility_name": "Fortis Hospital Mumbai", "state": "Maharashtra", "district": "Mumbai", "facility_type": "Hospital", "trust_score": 78},
+        {"facility_id": "f003", "facility_name": "AIIMS Patna", "state": "Bihar", "district": "Patna", "facility_type": "Government Hospital", "trust_score": 62},
+        {"facility_id": "f004", "facility_name": "City Care Clinic", "state": "Rajasthan", "district": "Jaipur", "facility_type": "Clinic", "trust_score": 45},
+        {"facility_id": "f005", "facility_name": "Rural Health Center Varanasi", "state": "Uttar Pradesh", "district": "Varanasi", "facility_type": "Primary Health Center", "trust_score": 55},
+        {"facility_id": "f006", "facility_name": "CMC Vellore", "state": "Tamil Nadu", "district": "Vellore", "facility_type": "Hospital", "trust_score": 92},
+    ]
+
+    # Use API data or fall back to demo
+    facilities = all_facilities if all_facilities else demo_facilities
+
+    # Facility dropdown
+    facility_options = {f"{f['facility_name']} ({f['district']}, {f['state']})": f["facility_id"] for f in facilities}
+    selected_name = st.selectbox("Select a facility", options=list(facility_options.keys()))
+    selected_id = facility_options.get(selected_name)
 
     # Demo facility for when API is not connected
     demo_facility = {
@@ -110,28 +118,14 @@ def render_inspector_tab():
         "judge_reasoning": "The facility has legitimate emergency capabilities with a well-equipped ICU, but the contradiction between claimed 24/7 service and actual staff scheduling is significant. Score of 72 reflects strong infrastructure offset by operational concerns.",
     }
 
-    # Try to fetch from API or use demo
-    facilities = search_facilities(search_query) if search_query else []
+    # Fetch facility details
+    selected_facility = get_facility_details(selected_id)
+    debate = get_trust_debate(selected_id) if selected_facility else None
 
-    if not facilities and not search_query:
-        # Show demo
+    # Fall back to demo data if API not available
+    if not selected_facility:
         selected_facility = demo_facility
         debate = demo_debate
-    elif facilities:
-        # Show search results
-        facility_options = {f["facility_name"]: f["facility_id"] for f in facilities}
-        selected_name = st.selectbox("Select a facility", options=list(facility_options.keys()))
-        selected_id = facility_options.get(selected_name)
-
-        selected_facility = get_facility_details(selected_id)
-        debate = get_trust_debate(selected_id) if selected_facility else None
-
-        if not selected_facility:
-            selected_facility = demo_facility
-            debate = demo_debate
-    else:
-        st.warning("No facilities found matching your search.")
-        return
 
     # Display facility details
     st.markdown("---")
