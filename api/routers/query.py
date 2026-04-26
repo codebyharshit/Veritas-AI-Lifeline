@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import mlflow
 
+from api.mock_data import is_local_mode, MOCK_FACILITIES, MOCK_TRUST_SCORES, MOCK_STRUCTURED
+
 router = APIRouter()
 
 
@@ -31,6 +33,8 @@ class QueryResponse(BaseModel):
 
 
 def get_spark():
+    if is_local_mode():
+        return None
     from pyspark.sql import SparkSession
     return SparkSession.builder.getOrCreate()
 
@@ -78,6 +82,77 @@ async def query_facilities(request: QueryRequest):
     5. Critic review
     6. Generate explanations
     """
+    if is_local_mode():
+        # Simple keyword-based search for local mode
+        query_lower = request.query.lower()
+
+        # Score each facility by relevance
+        scored_facilities = []
+        for f in MOCK_FACILITIES:
+            score = 0
+            fid = f["facility_id"]
+            trust_data = MOCK_TRUST_SCORES.get(fid, {})
+            structured = MOCK_STRUCTURED.get(fid, {})
+
+            # Check if location matches
+            if f["state"].lower() in query_lower or f["district"].lower() in query_lower:
+                score += 30
+
+            # Check if facility type matches
+            if f["facility_type"].lower() in query_lower:
+                score += 20
+
+            # Check capabilities
+            caps = structured.get("verified_capabilities", [])
+            cap_names = [c.get("capability", "").lower() for c in caps]
+            matching_caps = []
+            for cap in cap_names:
+                if cap in query_lower or any(word in cap for word in query_lower.split()):
+                    score += 25
+                    matching_caps.append(cap.title())
+
+            # Check unstructured notes
+            notes = f.get("unstructured_notes", "").lower()
+            for word in query_lower.split():
+                if len(word) > 3 and word in notes:
+                    score += 5
+
+            # Factor in trust score
+            trust_score = trust_data.get("trust_score", 50)
+            score += trust_score // 10
+
+            if score > 0:
+                scored_facilities.append({
+                    "facility": f,
+                    "score": score,
+                    "trust_score": trust_score,
+                    "matching_caps": matching_caps,
+                })
+
+        # Sort by score descending
+        scored_facilities.sort(key=lambda x: x["score"], reverse=True)
+
+        # Build results
+        results = []
+        for item in scored_facilities[:request.max_results]:
+            f = item["facility"]
+            results.append(FacilityResult(
+                facility_id=f["facility_id"],
+                facility_name=f["facility_name"],
+                state=f["state"],
+                district=f["district"],
+                trust_score=item["trust_score"],
+                justification=f"Matched query '{request.query}' with relevance score {item['score']}. Trust score: {item['trust_score']}/100.",
+                matching_capabilities=item["matching_caps"],
+            ))
+
+        return QueryResponse(
+            query=request.query,
+            results=results,
+            mlflow_trace_id=None,
+        )
+
+    # Databricks mode
     try:
         spark = get_spark()
         client = get_llm_client()

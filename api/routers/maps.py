@@ -2,10 +2,14 @@
 from fastapi import APIRouter, HTTPException
 from typing import Optional, Literal
 
+from api.mock_data import is_local_mode, MOCK_GEO_LOOKUP, MOCK_FACILITIES
+
 router = APIRouter()
 
 
 def get_spark():
+    if is_local_mode():
+        return None
     from pyspark.sql import SparkSession
     return SparkSession.builder.getOrCreate()
 
@@ -23,6 +27,48 @@ async def get_map_data(
     - yellow: 50-100km
     - red: >100km
     """
+    if is_local_mode():
+        # Use mock data
+        geo_data = [g for g in MOCK_GEO_LOOKUP if g["capability"] == capability]
+
+        if geo_data:
+            return {
+                "capability": capability,
+                "granularity": granularity,
+                "region_count": len(geo_data),
+                "regions": [
+                    {
+                        "pin_code": g["pin_code"],
+                        "distance_km": g["distance_km"],
+                        "desert_severity": g["desert_severity"],
+                        "nearest_facility_id": g["nearest_facility_id"],
+                        "nearest_trust_score": g["nearest_trust_score"],
+                    }
+                    for g in geo_data
+                ]
+            }
+        else:
+            # No geo data for this capability, return facilities
+            return {
+                "capability": capability,
+                "granularity": "facilities",
+                "message": "No geo data for this capability, returning facility locations",
+                "facility_count": len(MOCK_FACILITIES),
+                "facilities": [
+                    {
+                        "facility_id": f["facility_id"],
+                        "facility_name": f["facility_name"],
+                        "state": f["state"],
+                        "district": f["district"],
+                        "latitude": f["latitude"],
+                        "longitude": f["longitude"],
+                        "facility_type": f["facility_type"],
+                    }
+                    for f in MOCK_FACILITIES
+                ]
+            }
+
+    # Databricks mode
     try:
         spark = get_spark()
 
@@ -102,6 +148,23 @@ async def get_map_data(
 @router.get("/map/capabilities")
 async def list_capabilities():
     """List all available capabilities for map filtering."""
+    # Common capability types (same for local and Databricks mode)
+    capabilities = [
+        "emergency_surgery",
+        "dialysis",
+        "oncology",
+        "trauma",
+        "obstetrics",
+        "icu",
+        "pediatrics",
+        "cardiology",
+        "orthopedics",
+        "general_medicine",
+    ]
+
+    if is_local_mode():
+        return {"capabilities": capabilities}
+
     try:
         spark = get_spark()
 
@@ -110,20 +173,7 @@ async def list_capabilities():
 
         # This would need to parse JSON and extract unique capabilities
         # For now, return common capability types
-        return {
-            "capabilities": [
-                "emergency_surgery",
-                "dialysis",
-                "oncology",
-                "trauma",
-                "obstetrics",
-                "icu",
-                "pediatrics",
-                "cardiology",
-                "orthopedics",
-                "general_medicine",
-            ]
-        }
+        return {"capabilities": capabilities}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

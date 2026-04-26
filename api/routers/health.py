@@ -2,10 +2,14 @@
 from fastapi import APIRouter
 from typing import Literal
 
+from api.mock_data import is_local_mode, MOCK_FACILITIES, MOCK_TRUST_SCORES, MOCK_CONTRADICTIONS
+
 router = APIRouter()
 
 
 def get_spark():
+    if is_local_mode():
+        return None
     from pyspark.sql import SparkSession
     return SparkSession.builder.getOrCreate()
 
@@ -20,6 +24,22 @@ async def health_check():
     """
     status: Literal["healthy", "degraded", "unhealthy"] = "healthy"
     issues = []
+
+    if is_local_mode():
+        # Return mock health status
+        return {
+            "status": "healthy",
+            "mode": "local_mock",
+            "model_serving_status": "mock",
+            "table_counts": {
+                "facilities_raw": len(MOCK_FACILITIES),
+                "facilities_structured": len(MOCK_FACILITIES),
+                "trust_scores": len(MOCK_TRUST_SCORES),
+                "citations": 0,
+                "contradictions": sum(len(v) for v in MOCK_CONTRADICTIONS.values()),
+            },
+            "issues": None,
+        }
 
     # Check Spark/Delta tables
     table_counts = {}
@@ -89,6 +109,29 @@ async def health_check():
 @router.get("/health/tables")
 async def table_details():
     """Get detailed table information."""
+    if is_local_mode():
+        scores = [t["trust_score"] for t in MOCK_TRUST_SCORES.values()]
+        avg_score = sum(scores) / len(scores) if scores else None
+        return {
+            "mode": "local_mock",
+            "tables": {
+                "facilities_raw": {
+                    "count": len(MOCK_FACILITIES),
+                    "columns": ["facility_id", "facility_name", "state", "district", "pin_code", "latitude", "longitude", "facility_type", "bed_count", "unstructured_notes"],
+                },
+                "facilities_structured": {
+                    "count": len(MOCK_FACILITIES),
+                    "columns": ["facility_id", "verified_capabilities_json", "staff_json", "equipment_json"],
+                },
+                "trust_scores": {
+                    "count": len(MOCK_TRUST_SCORES),
+                    "avg_trust_score": round(avg_score, 1) if avg_score else None,
+                },
+                "citations": {"count": 0},
+                "contradictions": {"count": sum(len(v) for v in MOCK_CONTRADICTIONS.values())},
+            }
+        }
+
     try:
         spark = get_spark()
 

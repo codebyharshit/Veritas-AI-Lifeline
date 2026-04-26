@@ -3,31 +3,49 @@ import json
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 
+from api.mock_data import (
+    is_local_mode, MOCK_FACILITIES, MOCK_TRUST_SCORES,
+    MOCK_CONTRADICTIONS, MOCK_STRUCTURED
+)
+
 router = APIRouter()
 
-# Database connection will be injected
-# For now, using mock data structure
+
 def get_spark():
-    """Get Spark session - to be configured for Databricks Connect or local."""
-    # This will be replaced with actual Databricks connection
+    """Get Spark session - returns None if running locally."""
+    if is_local_mode():
+        return None
     from pyspark.sql import SparkSession
     return SparkSession.builder.getOrCreate()
 
 
 @router.get("/facilities/{facility_id}")
 async def get_facility(facility_id: str):
-    """
-    Get detailed facility information including:
-    - Basic info (name, location, type)
-    - Structured extraction (capabilities, staff, equipment)
-    - Trust score
-    - Citations
-    - Contradictions
-    """
+    """Get detailed facility information."""
+
+    if is_local_mode():
+        # Use mock data
+        facility = next((f for f in MOCK_FACILITIES if f["facility_id"] == facility_id), None)
+        if not facility:
+            raise HTTPException(status_code=404, detail=f"Facility {facility_id} not found")
+
+        trust_data = MOCK_TRUST_SCORES.get(facility_id, {})
+        structured = MOCK_STRUCTURED.get(facility_id, {})
+        contradictions = MOCK_CONTRADICTIONS.get(facility_id, [])
+
+        return {
+            **facility,
+            "verified_capabilities": structured.get("verified_capabilities", []),
+            "staff": structured.get("staff", []),
+            "equipment": structured.get("equipment", []),
+            "trust_score": trust_data.get("trust_score"),
+            "citations": [],
+            "contradictions": contradictions,
+        }
+
+    # Databricks mode
     try:
         spark = get_spark()
-
-        # Get raw facility data
         raw_df = spark.table("workspace.veritas_dev.facilities_raw")
         raw_row = raw_df.filter(raw_df.facility_id == facility_id).collect()
 
@@ -36,47 +54,26 @@ async def get_facility(facility_id: str):
 
         raw = raw_row[0]
 
-        # Get structured extraction
         structured_df = spark.table("workspace.veritas_dev.facilities_structured")
         structured_row = structured_df.filter(structured_df.facility_id == facility_id).collect()
 
         capabilities = []
         staff = []
         equipment = []
-        operational_hours = None
 
         if structured_row:
             s = structured_row[0]
             capabilities = json.loads(s.verified_capabilities_json) if s.verified_capabilities_json else []
             staff = json.loads(s.staff_json) if s.staff_json else []
             equipment = json.loads(s.equipment_json) if s.equipment_json else []
-            operational_hours = s.operational_hours
 
-        # Get trust score
         trust_df = spark.table("workspace.veritas_dev.trust_scores")
         trust_row = trust_df.filter(trust_df.facility_id == facility_id).collect()
+        trust_score = trust_row[0].trust_score if trust_row else None
 
-        trust_score = None
-        if trust_row:
-            trust_score = trust_row[0].trust_score
-
-        # Get citations
-        citations_df = spark.table("workspace.veritas_dev.citations")
-        citations = [
-            {
-                "citation_id": c.citation_id,
-                "claim_type": c.claim_type,
-                "claim_text": c.claim_text,
-                "source_sentence": c.source_sentence,
-            }
-            for c in citations_df.filter(citations_df.facility_id == facility_id).collect()
-        ]
-
-        # Get contradictions
         contras_df = spark.table("workspace.veritas_dev.contradictions")
         contradictions = [
             {
-                "contradiction_id": c.contradiction_id,
                 "claim": c.claim,
                 "evidence_gap": c.evidence_gap,
                 "trust_impact": c.trust_impact,
@@ -95,13 +92,10 @@ async def get_facility(facility_id: str):
             "longitude": raw.longitude,
             "facility_type": raw.facility_type,
             "bed_count": raw.bed_count,
-            "unstructured_notes": raw.unstructured_notes,
             "verified_capabilities": capabilities,
             "staff": staff,
             "equipment": equipment,
-            "operational_hours": operational_hours,
             "trust_score": trust_score,
-            "citations": citations,
             "contradictions": contradictions,
         }
 
@@ -120,9 +114,43 @@ async def list_facilities(
     limit: int = 100,
 ):
     """List facilities with optional filters."""
+
+    if is_local_mode():
+        # Use mock data
+        facilities = MOCK_FACILITIES.copy()
+
+        if state:
+            facilities = [f for f in facilities if f["state"].lower() == state.lower()]
+        if district:
+            facilities = [f for f in facilities if f["district"].lower() == district.lower()]
+        if facility_type:
+            facilities = [f for f in facilities if facility_type.lower() in f["facility_type"].lower()]
+        if min_trust_score:
+            facilities = [
+                f for f in facilities
+                if MOCK_TRUST_SCORES.get(f["facility_id"], {}).get("trust_score", 0) >= min_trust_score
+            ]
+
+        return {
+            "count": len(facilities[:limit]),
+            "facilities": [
+                {
+                    "facility_id": f["facility_id"],
+                    "facility_name": f["facility_name"],
+                    "state": f["state"],
+                    "district": f["district"],
+                    "facility_type": f["facility_type"],
+                    "latitude": f["latitude"],
+                    "longitude": f["longitude"],
+                    "trust_score": MOCK_TRUST_SCORES.get(f["facility_id"], {}).get("trust_score"),
+                }
+                for f in facilities[:limit]
+            ]
+        }
+
+    # Databricks mode
     try:
         spark = get_spark()
-
         df = spark.table("workspace.veritas_dev.facilities_raw")
 
         if state:
@@ -131,12 +159,6 @@ async def list_facilities(
             df = df.filter(df.district == district)
         if facility_type:
             df = df.filter(df.facility_type == facility_type)
-
-        # Join with trust scores if filtering by score
-        if min_trust_score:
-            trust_df = spark.table("workspace.veritas_dev.trust_scores")
-            df = df.join(trust_df, on="facility_id", how="inner")
-            df = df.filter(df.trust_score >= min_trust_score)
 
         rows = df.limit(limit).collect()
 

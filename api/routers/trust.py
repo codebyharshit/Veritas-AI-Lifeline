@@ -2,26 +2,49 @@
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 
+from api.mock_data import is_local_mode, MOCK_TRUST_SCORES, MOCK_FACILITIES
+
 router = APIRouter()
 
 
 def get_spark():
+    if is_local_mode():
+        return None
     from pyspark.sql import SparkSession
     return SparkSession.builder.getOrCreate()
 
 
 @router.get("/trust/{facility_id}/debate")
 async def get_trust_debate(facility_id: str):
-    """
-    Get the full Advocate/Skeptic/Judge debate transcript for a facility.
+    """Get the full Advocate/Skeptic/Judge debate transcript for a facility."""
 
-    This is the "Trust Reasoning" section shown in the Facility Inspector.
-    It's a key differentiator — making the AI's reasoning visible to users.
-    """
+    if is_local_mode():
+        # Use mock data
+        trust_data = MOCK_TRUST_SCORES.get(facility_id)
+        if not trust_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No trust debate found for facility {facility_id}"
+            )
+
+        facility = next((f for f in MOCK_FACILITIES if f["facility_id"] == facility_id), None)
+        facility_name = facility["facility_name"] if facility else "Unknown"
+
+        return {
+            "facility_id": facility_id,
+            "facility_name": facility_name,
+            "trust_score": trust_data["trust_score"],
+            "advocate_argument": trust_data["advocate_argument"],
+            "skeptic_argument": trust_data["skeptic_argument"],
+            "judge_reasoning": trust_data["judge_reasoning"],
+            "mlflow_trace_url": None,
+            "debated_at": "2026-04-26T10:30:00Z",
+        }
+
+    # Databricks mode
     try:
         spark = get_spark()
 
-        # Get trust score record
         trust_df = spark.table("workspace.veritas_dev.trust_scores")
         trust_row = trust_df.filter(trust_df.facility_id == facility_id).collect()
 
@@ -33,15 +56,12 @@ async def get_trust_debate(facility_id: str):
 
         t = trust_row[0]
 
-        # Get facility name for context
         raw_df = spark.table("workspace.veritas_dev.facilities_raw")
         raw_row = raw_df.filter(raw_df.facility_id == facility_id).collect()
         facility_name = raw_row[0].facility_name if raw_row else "Unknown"
 
-        # Build MLflow trace URL if available
         mlflow_trace_url = None
         if hasattr(t, 'mlflow_run_id') and t.mlflow_run_id:
-            # This would be configured based on MLflow tracking server URL
             mlflow_trace_url = f"/mlflow/#/experiments/0/runs/{t.mlflow_run_id}"
 
         return {
@@ -64,9 +84,30 @@ async def get_trust_debate(facility_id: str):
 @router.get("/trust/stats")
 async def get_trust_stats():
     """Get aggregate trust score statistics."""
+
+    if is_local_mode():
+        # Use mock data
+        scores = [t["trust_score"] for t in MOCK_TRUST_SCORES.values()]
+        if not scores:
+            return {"total_facilities": 0}
+
+        avg_score = sum(scores) / len(scores)
+        return {
+            "total_facilities": len(scores),
+            "average_score": round(avg_score, 1),
+            "min_score": min(scores),
+            "max_score": max(scores),
+            "stddev": None,
+            "distribution": {
+                "40-59": len([s for s in scores if 40 <= s < 60]),
+                "60-79": len([s for s in scores if 60 <= s < 80]),
+                "80-100": len([s for s in scores if 80 <= s <= 100]),
+            }
+        }
+
+    # Databricks mode
     try:
         spark = get_spark()
-
         trust_df = spark.table("workspace.veritas_dev.trust_scores")
 
         from pyspark.sql import functions as F
@@ -79,21 +120,12 @@ async def get_trust_stats():
             F.stddev("trust_score").alias("stddev_score"),
         ).collect()[0]
 
-        # Score distribution
-        distribution = trust_df.groupBy(
-            ((F.col("trust_score") / 20).cast("int") * 20).alias("bucket")
-        ).count().orderBy("bucket").collect()
-
         return {
             "total_facilities": stats.total,
             "average_score": round(stats.avg_score, 1) if stats.avg_score else None,
             "min_score": stats.min_score,
             "max_score": stats.max_score,
             "stddev": round(stats.stddev_score, 1) if stats.stddev_score else None,
-            "distribution": {
-                f"{int(d.bucket)}-{int(d.bucket)+19}": d["count"]
-                for d in distribution
-            }
         }
 
     except Exception as e:
