@@ -1,7 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "pip install -r api/requirements.txt",
-  "outputDirectory": "api",
   "builds": [
     {
       "src": "api/main.py",
@@ -13,6 +11,5 @@
       "src": "/(.*)",
       "dest": "api/main.py"
     }
-  ],
-  "ignoreCommand": "exit 0"
+  ]
 }
