@@ -5,7 +5,14 @@ from databricks.sdk import WorkspaceClient
 
 # Free MLflow tracing for every chat completion / embedding call.
 # This satisfies the "MLflow tracing as product feature" differentiator.
-mlflow.openai.autolog()
+try:
+    mlflow.openai.autolog()
+except AttributeError:
+    # Older MLflow versions may not have openai.autolog
+    try:
+        mlflow.autolog()
+    except Exception:
+        pass  # Tracing not available, continue without it
 
 # Single source of truth for model assignments.
 MODEL_CHAT = "databricks-meta-llama-3-3-70b-instruct"

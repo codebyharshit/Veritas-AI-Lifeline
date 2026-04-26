@@ -3,7 +3,10 @@ import streamlit as st
 import requests
 from typing import Optional
 
-API_BASE = st.secrets.get("API_BASE", "http://localhost:8000")
+try:
+    API_BASE = st.secrets["API_BASE"]
+except (KeyError, FileNotFoundError):
+    API_BASE = "http://localhost:8000"
 
 
 def query_facilities(query: str, max_results: int = 5) -> Optional[dict]:
@@ -24,25 +27,36 @@ def render_query_tab():
     """Render the Natural Language Query tab."""
 
     st.markdown("""
-    ### Where should this person go?
+    <div style='margin-bottom: 1.5rem;'>
+        <h3 style='margin-bottom: 0.5rem; color: #1e3a5f;'>Where should this person go?</h3>
+        <p style='color: #666; line-height: 1.6;'>
+            Ask complex questions combining <strong>capability</strong>, <strong>location</strong>,
+            and <strong>constraints</strong>. Every answer is traceable back to the source evidence.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    Ask complex questions combining **capability**, **location**, and **constraints**.
-    Every answer is traceable back to the source evidence.
-    """)
-
-    # Example queries
-    st.markdown("**Example queries:**")
-    example_cols = st.columns(2)
-    with example_cols[0]:
-        st.markdown("""
-        - *"Find hospitals in Bihar with emergency surgery capability"*
-        - *"Dialysis centers in Mumbai with high trust scores"*
-        """)
-    with example_cols[1]:
-        st.markdown("""
-        - *"Pediatric hospitals in rural Uttar Pradesh"*
-        - *"Oncology treatment facilities in South India"*
-        """)
+    # Example queries in a styled card
+    st.markdown("""
+    <div style='background: #f8f9fa; padding: 1rem 1.5rem; border-radius: 10px;
+                border-left: 4px solid #ff4b4b; margin-bottom: 1.5rem;'>
+        <p style='font-weight: 600; color: #1e3a5f; margin-bottom: 0.5rem;'>Try asking:</p>
+        <div style='display: flex; flex-wrap: wrap; gap: 0.5rem;'>
+            <span style='background: white; padding: 0.4rem 0.8rem; border-radius: 20px;
+                        font-size: 0.85rem; color: #666;'>
+                "Find hospitals in Bihar with emergency surgery"
+            </span>
+            <span style='background: white; padding: 0.4rem 0.8rem; border-radius: 20px;
+                        font-size: 0.85rem; color: #666;'>
+                "Dialysis centers in Mumbai with high trust"
+            </span>
+            <span style='background: white; padding: 0.4rem 0.8rem; border-radius: 20px;
+                        font-size: 0.85rem; color: #666;'>
+                "Pediatric hospitals in rural UP"
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("---")
 

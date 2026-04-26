@@ -3,7 +3,10 @@ import streamlit as st
 import requests
 from typing import Optional
 
-API_BASE = st.secrets.get("API_BASE", "http://localhost:8000")
+try:
+    API_BASE = st.secrets["API_BASE"]
+except (KeyError, FileNotFoundError):
+    API_BASE = "http://localhost:8000"
 
 
 def get_facility_details(facility_id: str) -> Optional[dict]:
@@ -50,11 +53,15 @@ def render_inspector_tab():
     """Render the Facility Inspector tab."""
 
     st.markdown("""
-    ### Can I trust this facility?
-
-    Search for a facility to see its **verified capabilities**, **flagged contradictions**,
-    and the full **Advocate/Skeptic/Judge debate** that produced its trust score.
-    """)
+    <div style='margin-bottom: 1.5rem;'>
+        <h3 style='margin-bottom: 0.5rem; color: #1e3a5f;'>Can I trust this facility?</h3>
+        <p style='color: #666; line-height: 1.6;'>
+            Search for a facility to see its <strong>verified capabilities</strong>,
+            <strong>flagged contradictions</strong>, and the full
+            <strong>Advocate/Skeptic/Judge debate</strong> that produced its trust score.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Search box
     search_query = st.text_input(

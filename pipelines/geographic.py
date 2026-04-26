@@ -201,7 +201,6 @@ def run_geographic_computation(
                     "capability": capability,
                     "nearest_facility_id": best_facility,
                     "distance_km": round(best_distance, 2),
-                    "travel_time_minutes": None,  # Would need isochrone API
                     "nearest_trust_score": best_trust,
                     "desert_severity": get_desert_severity(best_distance),
                 })
@@ -251,6 +250,10 @@ def preview_geo_lookup(
 
     df = spark.table(table_name)
     df = df.filter(df.capability == capability)
+
+    # Select only the columns we know exist
+    df = df.select("pin_code", "capability", "nearest_facility_id",
+                   "distance_km", "nearest_trust_score", "desert_severity")
 
     print(f"\nTotal PIN codes with {capability}: {df.count()}")
 
