@@ -1,12 +1,11 @@
 {
   "version": 2,
+  "buildCommand": "pip install -r api/requirements.txt",
+  "outputDirectory": "api",
   "builds": [
     {
       "src": "api/main.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
+      "use": "@vercel/python"
     }
   ],
   "routes": [
@@ -15,10 +14,5 @@
       "dest": "api/main.py"
     }
   ],
-  "functions": {
-    "api/main.py": {
-      "memory": 512,
-      "maxDuration": 30
-    }
-  }
+  "ignoreCommand": "exit 0"
 }
