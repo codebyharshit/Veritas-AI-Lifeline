@@ -1,0 +1,32 @@
+# Ignore large/unnecessary files for Lambda deployment
+*.xlsx
+*.xls
+*.csv
+*.parquet
+
+# Frontend (deploy separately)
+frontend/
+.streamlit/
+
+# Notebooks
+notebooks/
+*.ipynb
+
+# Pipelines (Databricks only)
+pipelines/
+
+# Development files
+.env
+.env.example
+*.md
+tests/
+prompts/
+
+# Cache
+__pycache__/
+*.pyc
+.git/
+.gitignore
+
+# Full requirements (use minimal requirements.txt)
+requirements-full.txt
