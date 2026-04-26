@@ -4,12 +4,17 @@ Endpoints per Section 2.5 of PRD/TRD.
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import mlflow
 
+from api.mock_data import is_local_mode
 from api.routers import facilities, maps, query, trust, health
 
-# Enable MLflow autolog
-mlflow.openai.autolog()
+# Enable MLflow autolog only in Databricks mode
+if not is_local_mode():
+    try:
+        import mlflow
+        mlflow.openai.autolog()
+    except Exception:
+        pass  # MLflow not available or autolog failed
 
 app = FastAPI(
     title="Veritas API",
@@ -39,5 +44,16 @@ async def root():
     return {
         "name": "Veritas API",
         "description": "Truth Layer for Indian Healthcare",
+        "version": "1.0.0",
+        "mode": "local_mock" if is_local_mode() else "databricks",
         "docs": "/docs",
     }
+
+
+# Lambda handler for AWS deployment
+try:
+    from mangum import Mangum
+    handler = Mangum(app)
+except ImportError:
+    # Mangum not installed (local development)
+    handler = None

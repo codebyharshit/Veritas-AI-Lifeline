@@ -1,0 +1,24 @@
+# Veritas API - Minimal dependencies for Lambda deployment
+# Use this for serverless deployment (Lambda, etc.)
+
+# API framework
+fastapi>=0.109.0
+uvicorn>=0.27.0
+mangum>=0.17.0  # Lambda adapter for FastAPI
+
+# Data models
+pydantic>=2.0.0
+
+# HTTP client (for LLM calls if needed)
+httpx>=0.26.0
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Note: This is for LOCAL MOCK MODE only
+# - No pyspark (provided by Databricks, not needed for mock)
+# - No streamlit (frontend runs separately)
+# - No mlflow (tracing only needed on Databricks)
+# - No langchain/langgraph (heavy, not needed for mock API)
+# - No pandas (mock data is in-memory dicts)
+# - No folium/h3 (frontend visualization only)

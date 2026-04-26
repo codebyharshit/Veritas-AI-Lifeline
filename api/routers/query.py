@@ -3,7 +3,6 @@ import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-import mlflow
 
 from api.mock_data import is_local_mode, MOCK_FACILITIES, MOCK_TRUST_SCORES, MOCK_STRUCTURED
 
@@ -154,6 +153,7 @@ async def query_facilities(request: QueryRequest):
 
     # Databricks mode
     try:
+        import mlflow  # Import here to avoid loading in local mode
         spark = get_spark()
         client = get_llm_client()
 
